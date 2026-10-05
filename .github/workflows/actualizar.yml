@@ -1,0 +1,42 @@
+name: Actualizar datos
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Nunca dos corridas a la vez: comparten el límite de la clave de Riot.
+concurrency:
+  group: actualizar
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Pedir datos a Riot
+        run: node scripts/actualizar.mjs
+        env:
+          RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
+
+      - name: Publicar si algo cambió
+        run: |
+          git add data
+          if git diff --cached --quiet; then
+            echo "Sin cambios"
+            exit 0
+          fi
+          git config user.name "muro-bot"
+          git config user.email "muro-bot@users.noreply.github.com"
+          git commit -m "Datos $(date -u +'%Y-%m-%d %H:%M')"
+          git push

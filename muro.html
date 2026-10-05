@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muro de Ranked</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: desktop wallpaper. Left 55% stays empty for Windows icons; everything
+   anchors bottom-right, above the taskbar. Each tile is one ranked game; the
+   bar rising inside it is that game's death count. */
+:root{
+  --ink:#070c11;          /* deep blue-black ground, cyan-biased */
+  --ink-2:#0c141b;
+  --surface:#111c25;
+  --line:#1e3040;
+  --fg:#e6f0f4;
+  --muted:#6d8a99;        /* blue-grey neutral, biased toward the accent */
+  --plat:#7ad6e8;         /* Platinum tier cyan — the accent */
+  --win:#4fd3b8;
+  --loss:#cf6b80;
+  --font-display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:
+    radial-gradient(120% 90% at 88% 18%, color-mix(in srgb, var(--plat) 16%, var(--ink)) 0%, transparent 58%),
+    radial-gradient(90% 70% at 70% 100%, color-mix(in srgb, var(--plat) 7%, var(--ink)) 0%, transparent 60%),
+    var(--ink);
+  color:var(--fg);
+  font-family:var(--font-mono);
+  -webkit-font-smoothing:antialiased;
+}
+body[data-glow="0"]{background:var(--ink)}
+/* Splash del último campeón: detrás de todo, casi transparente, y desvanecido
+   hacia la izquierda para que la zona de íconos quede limpia. */
+.splash{
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:center right / cover no-repeat;
+  opacity:var(--splash-opacity,.14);
+  filter:blur(var(--splash-blur,0px)) saturate(var(--splash-sat,.85));
+  -webkit-mask-image:linear-gradient(90deg, transparent 0%, transparent 25%, #000 70%);
+          mask-image:linear-gradient(90deg, transparent 0%, transparent 25%, #000 70%);
+  transition:opacity 1.2s ease;
+}
+.splash:not(.ready){opacity:0}
+.stage{position:relative; z-index:1;
+  min-height:100%;
+  display:flex; align-items:flex-end; justify-content:flex-end;
+  padding:5vh var(--pad-side,4vw) var(--pad-bottom,5vh);
+}
+.stage[data-align="left"]{justify-content:flex-start}
+.stage[data-align="center"]{justify-content:center}
+.panel{
+  width:min(var(--panel-w,760px),100%); display:flex; flex-direction:column; gap:26px;
+  transform:scale(var(--scale,1)); transform-origin:bottom right;
+  opacity:var(--panel-opacity,1);
+}
+[hidden]{display:none !important}
+.stage[data-align="left"] .panel{transform-origin:bottom left}
+.stage[data-align="center"] .panel{transform-origin:bottom center}
+
+/* ── identity ───────────────────────────────────────── */
+.who{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
+.who b{font:600 12px/1 var(--font-mono); letter-spacing:.22em; text-transform:uppercase; color:var(--muted)}
+.who span{font:400 11px/1 var(--font-mono); letter-spacing:.14em; color:#44606f}
+
+/* ── rank block ─────────────────────────────────────── */
+.rank{display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap}
+.tier{
+  font-family:var(--font-display); font-weight:900;
+  font-size:clamp(38px,6.4vw,72px); line-height:.86;
+  letter-spacing:-.025em; margin:0;
+  background:linear-gradient(170deg,#eafaff 10%,var(--plat) 92%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.lp{display:flex; align-items:baseline; gap:6px; padding-bottom:5px}
+.lp b{font:600 clamp(22px,3vw,30px)/1 var(--font-mono); color:var(--fg); font-variant-numeric:tabular-nums}
+.lp i{font:500 11px/1 var(--font-mono); font-style:normal; letter-spacing:.2em; color:var(--muted)}
+
+.bar{height:3px; background:var(--line); border-radius:2px; overflow:hidden}
+.bar>i{display:block; height:100%; background:linear-gradient(90deg,#3f93a8,var(--plat)); border-radius:2px}
+
+/* ── stat row ───────────────────────────────────────── */
+.stats{display:flex; gap:clamp(18px,3.4vw,42px); flex-wrap:wrap}
+.stat{min-width:0; display:flex; flex-direction:column; gap:7px}
+.stat em{font:500 10px/1 var(--font-mono); font-style:normal; letter-spacing:.2em; text-transform:uppercase; color:#4f6d7c}
+.stat b{font:600 19px/1 var(--font-mono); color:var(--fg); font-variant-numeric:tabular-nums}
+.stat b small{font-size:12px; font-weight:400; color:var(--muted)}
+.stat.key b{color:var(--plat)}
+
+/* ── the wall ───────────────────────────────────────── */
+.wall{display:flex; flex-direction:column; gap:11px}
+.wall-head{display:flex; justify-content:space-between; align-items:baseline; gap:14px}
+.wall-head em{font:500 10px/1 var(--font-mono); font-style:normal; letter-spacing:.2em; text-transform:uppercase; color:#4f6d7c}
+.wall-head span{font:400 10px/1 var(--font-mono); color:#3d5867; letter-spacing:.04em}
+.grid{display:grid; grid-template-columns:repeat(var(--cols,12),1fr); gap:var(--gap,5px)}
+.t{
+  position:relative; aspect-ratio:1; border-radius:var(--radius,2px); overflow:hidden;
+  background:#0e1a22; border:1px solid var(--line);
+}
+.t[data-w="1"], .swatch.win{border-color:color-mix(in srgb, var(--win) 28%, var(--line))}
+.t[data-w="0"], .swatch.loss{border-color:color-mix(in srgb, var(--loss) 28%, var(--line))}
+.t>i{
+  position:absolute; left:0; right:0; bottom:0; display:block;
+  transform-origin:bottom; transition:height .5s cubic-bezier(.22,1,.36,1);
+}
+.t[data-w="1"]>i{background:var(--win)}
+.t[data-w="0"]>i{background:var(--loss)}
+.t[data-streak]{box-shadow:0 0 0 1px var(--plat), 0 0 12px -2px color-mix(in srgb, var(--plat) 50%, transparent)}
+
+.legend{display:flex; gap:20px; flex-wrap:wrap; align-items:center; font:400 10px/1.5 var(--font-mono); color:#4f6d7c}
+.legend div{display:flex; align-items:center; gap:7px}
+.swatch{width:11px; height:11px; border-radius:2px; flex:none; position:relative; overflow:hidden; border:1px solid var(--line)}
+.swatch>i{position:absolute; inset:auto 0 0 0}
+
+.foot{display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap;
+  border-top:1px solid var(--line); padding-top:12px;
+  font:400 10px/1 var(--font-mono); color:#3d5867; letter-spacing:.06em}
+
+@media (prefers-reduced-motion:reduce){ .t>i{transition:none} }
+@media (max-width:620px){
+  .stage{align-items:center; justify-content:center; padding:4vh 16px}
+  .panel{transform:none}
+  .grid{grid-template-columns:repeat(8,1fr)}
+}
+</style>
+
+<div class="splash" id="splash"></div>
+<div class="stage">
+  <div class="panel">
+
+    <div class="who" id="secWho">
+      <b id="riotId">—</b><span id="queue">CLASIFICATORIA SOLO/DUO</span>
+    </div>
+
+    <div id="secRank">
+      <div class="rank">
+        <h1 class="tier" id="tier">—</h1>
+        <div class="lp"><b id="lp">0</b><i>LP</i></div>
+      </div>
+      <div class="bar" id="secLpBar" style="margin-top:14px"><i id="lpBar" style="width:0%"></i></div>
+    </div>
+
+    <div class="stats" id="secStats">
+      <div class="stat" id="statSeason"><em>Temporada</em><b id="season">—</b></div>
+      <div class="stat" id="statRecent"><em>Últimas 20</em><b id="recent">—</b></div>
+      <div class="stat" id="statStreak"><em>Racha</em><b id="streak">—</b></div>
+      <div class="stat key" id="statDeaths"><em>Muertes / partida</em><b id="deaths">—</b></div>
+    </div>
+
+    <div class="wall" id="secWall">
+      <div class="wall-head" id="secWallHead">
+        <em>El muro</em>
+        <span id="wallRange">—</span>
+      </div>
+      <div class="grid" id="grid"></div>
+      <div class="legend" id="secLegend">
+        <div><span class="swatch win"><i style="height:22%;background:var(--win)"></i></span> victoria</div>
+        <div><span class="swatch loss"><i style="height:22%;background:var(--loss)"></i></span> derrota</div>
+        <div>la barra que sube dentro de cada cuadro son las muertes de esa partida</div>
+      </div>
+    </div>
+
+    <div class="foot" id="secFoot">
+      <span id="updated">—</span>
+      <span id="note">—</span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ─────────────────────────────────────────────────────────────
+   Muro de Ranked, versión web. Todo se configura desde el link:
+     muro.html?j=<jugador>&mi=60&col=12 ...
+   El link se arma en index.html (el generador). Los datos salen
+   de data/<jugador>.json, que actualiza una GitHub Action.
+   ───────────────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+const n = v => Number.isFinite(+v) ? +v : 0;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+const cfg = {
+  tiles: 24, cols: 12, deathCap: 12, align: "right", scale: 1,
+  padBottom: 60, padSide: 55, panelWidth: 760, opacity: 1, gap: 5, radius: 2,
+  accent: "#7ad6e8", win: "#4fd3b8", loss: "#cf6b80", bg: "#070c11", glow: true,
+  animate: true, streakGlow: true,
+  splash: true, splashOpacity: 0.14, splashBlur: 0, splashSat: 0.85,
+  show: { who: true, rank: true, lpBar: true, stats: true, season: true, recent: true, streak: true, deaths: true, wallHead: true, legend: true, foot: true },
+};
+
+/* Parámetros del link. Los mismos nombres usa el generador. */
+const q = new URLSearchParams(location.search);
+const num = (k, lo, hi, f = x => x) => { if (q.has(k)) return f(clamp(n(q.get(k)), lo, hi)); };
+const bool = k => q.has(k) ? q.get(k) !== "0" : undefined;
+const hex = k => q.has(k) && /^[0-9a-f]{6}$/i.test(q.get(k)) ? "#" + q.get(k) : undefined;
+const set = (k, v) => { if (v !== undefined) cfg[k] = v; };
+const SLUG = (q.get("j") || "").toLowerCase().replace(/[^a-z0-9-]/g, "");
+set("tiles", num("p", 8, 400));
+set("cols", num("col", 4, 40));
+set("deathCap", num("tm", 4, 25));
+set("align", { l: "left", c: "center", r: "right" }[q.get("al")]);
+set("scale", num("es", 50, 160, x => x / 100));
+set("padBottom", num("mi", 0, 900));
+set("padSide", num("ml", 0, 900));
+set("panelWidth", num("an", 360, 1600));
+set("opacity", num("op", 20, 100, x => x / 100));
+set("gap", num("sep", 0, 16));
+set("radius", num("red", 0, 16));
+set("accent", hex("ac"));
+set("win", hex("vi"));
+set("loss", hex("de"));
+set("bg", hex("fo"));
+set("glow", bool("br"));
+set("splash", bool("sp"));
+set("splashOpacity", num("spo", 0, 60, x => x / 100));
+set("splashBlur", num("spb", 0, 20));
+set("splashSat", num("spc", 0, 150, x => x / 100));
+set("animate", bool("anim"));
+set("streakGlow", bool("ra"));
+for (const k of (q.get("oc") || "").split(",")) if (k in cfg.show) cfg.show[k] = false;
+
+const stage = document.querySelector(".stage");
+const panel = document.querySelector(".panel");
+const grid = $("grid");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let D = null;
+
+// Precarga la imagen y recién ahí la muestra, con un fundido, para que no parpadee al cambiar de campeón.
+let splashSrc = null;
+function setSplash(src) {
+  const el = $("splash");
+  if (!src) { el.classList.remove("ready"); splashSrc = null; return; }
+  if (src === splashSrc) return;
+  splashSrc = src;
+  const img = new Image();
+  img.onload = () => {
+    if (splashSrc !== src) return;
+    el.style.backgroundImage = `url("${src}")`;
+    el.classList.add("ready");
+  };
+  img.onerror = () => el.classList.remove("ready");
+  img.src = src;
+}
+
+function applyStyle() {
+  stage.dataset.align = cfg.align;
+  panel.style.setProperty("--scale", cfg.scale);
+  grid.style.setProperty("--cols", cfg.cols);
+  const root = document.documentElement.style;
+  root.setProperty("--pad-bottom", cfg.padBottom + "px");
+  root.setProperty("--pad-side", cfg.padSide + "px");
+  root.setProperty("--panel-w", cfg.panelWidth + "px");
+  root.setProperty("--panel-opacity", cfg.opacity);
+  root.setProperty("--gap", cfg.gap + "px");
+  root.setProperty("--radius", cfg.radius + "px");
+  root.setProperty("--plat", cfg.accent);
+  root.setProperty("--win", cfg.win);
+  root.setProperty("--loss", cfg.loss);
+  root.setProperty("--ink", cfg.bg);
+  document.body.dataset.glow = cfg.glow ? "1" : "0";
+  root.setProperty("--splash-opacity", cfg.splashOpacity);
+  root.setProperty("--splash-blur", cfg.splashBlur + "px");
+  root.setProperty("--splash-sat", cfg.splashSat);
+  const sections = {
+    who: "secWho", rank: "secRank", lpBar: "secLpBar", stats: "secStats", season: "statSeason", recent: "statRecent",
+    streak: "statStreak", deaths: "statDeaths", wallHead: "secWallHead", legend: "secLegend", foot: "secFoot",
+  };
+  for (const [k, id] of Object.entries(sections)) $(id).hidden = !cfg.show[k];
+}
+
+function showMessage(tier, note) {
+  $("tier").textContent = tier;
+  $("note").textContent = note;
+}
+
+function render() {
+  const all = Array.isArray(D.games) ? D.games : [];
+  const games = all.slice(-cfg.tiles);
+  const wins = n(D.wins), losses = n(D.losses), total = wins + losses;
+
+  setSplash(cfg.splash && D.splash ? `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${D.splash}_0.jpg` : null);
+
+  $("riotId").textContent = D.riotId || "—";
+  $("tier").textContent = [D.tier, D.division].filter(Boolean).join(" ") || "—";
+  $("lp").textContent = n(D.lp);
+  $("lpBar").style.width = clamp(n(D.lp), 0, 100) + "%";
+
+  $("season").innerHTML = total
+    ? `${wins}<small>V</small> ${losses}<small>D</small> <small>· ${Math.round(wins / total * 100)}%</small>`
+    : "—";
+
+  const last20 = games.slice(-20);
+  const w20 = last20.filter(g => n(g.w) === 1).length;
+  $("recent").innerHTML = last20.length
+    ? `${w20}<small>V</small> ${last20.length - w20}<small>D</small>`
+    : "—";
+
+  // racha: corrida final de resultados iguales
+  let run = 0, sign = null;
+  for (let i = games.length - 1; i >= 0; i--) {
+    const w = n(games[i].w);
+    if (sign === null) sign = w;
+    if (w !== sign) break;
+    run++;
+  }
+  const word = sign === 1
+    ? (run === 1 ? "victoria" : "victorias")
+    : (run === 1 ? "derrota" : "derrotas");
+  $("streak").innerHTML = run ? `${run} <small>${word}</small>` : "—";
+
+  const avg = a => a.length ? a.reduce((s, g) => s + n(g.d), 0) / a.length : 0;
+  const dW = avg(games.filter(g => n(g.w) === 1));
+  const dL = avg(games.filter(g => n(g.w) === 0));
+  $("deaths").innerHTML = games.length
+    ? `${avg(games).toFixed(1)} <small>· ${dW.toFixed(1)} ganando / ${dL.toFixed(1)} perdiendo</small>`
+    : "—";
+
+  $("wallRange").textContent = games.length
+    ? `${games.length} partidas · más antigua a la izquierda`
+    : "sin partidas de ranked solo/duo esta temporada";
+
+  grid.textContent = "";
+  const frag = document.createDocumentFragment();
+  games.forEach((g, i) => {
+    const t = document.createElement("div");
+    t.className = "t";
+    t.dataset.w = n(g.w) === 1 ? "1" : "0";
+    if (cfg.streakGlow && run >= 3 && i >= games.length - run) t.dataset.streak = "1";
+    const bar = document.createElement("i");
+    const h = (clamp(n(g.d) / cfg.deathCap, 0.09, 1) * 100).toFixed(1) + "%";
+    bar.dataset.h = h;
+    bar.style.height = (reduce || !cfg.animate) ? h : "0%";
+    t.title = `${g.c || "?"} · ${n(g.w) === 1 ? "victoria" : "derrota"} · ${n(g.d)} muertes`;
+    t.appendChild(bar);
+    frag.appendChild(t);
+  });
+  grid.appendChild(frag);
+
+  if (!reduce && cfg.animate) {
+    grid.querySelectorAll(".t > i").forEach((bar, i) => {
+      setTimeout(() => { bar.style.height = bar.dataset.h; }, 40 + i * 11);
+    });
+  }
+  showUpdated();
+  $("note").textContent = "";
+}
+
+function showUpdated() {
+  const when = D.updated ? new Date(D.updated) : null;
+  $("updated").textContent = when && !isNaN(when)
+    ? "actualizado " + when.toLocaleString("es", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+    : "";
+}
+
+/* ── Datos ───────────────────────────────────────────────────
+   Se vuelven a pedir cada 5 minutos y solo se redibuja si cambió
+   algo. Los fondos de pantalla se pausan mientras jugás a pantalla
+   completa, así que en vez de un temporizador suelto se compara el
+   reloj: al volver al escritorio revisa si ya pasó el intervalo. */
+const EVERY = 5 * 60 * 1000;
+const key = d => JSON.stringify([d.tier, d.division, d.lp, d.wins, d.losses, d.splash, d.games]);
+let last = 0;
+let loading = false;
+
+async function refresh() {
+  if (loading) return;
+  loading = true;
+  last = Date.now();
+  try {
+    const res = await fetch(`data/${SLUG}.json?t=${last}`, { cache: "no-store" });
+    if (res.status === 404) { if (!D) showMessage("JUGADOR NO ENCONTRADO", "revisá el link en el generador"); return; }
+    if (!res.ok) throw new Error(res.status);
+    const fresh = await res.json();
+    const changed = !D || key(fresh) !== key(D);
+    D = fresh;
+    if (changed) render(); else showUpdated();
+  } catch (e) {
+    if (!D) showMessage("SIN CONEXIÓN", "se reintenta en unos minutos");
+  } finally {
+    loading = false;
+  }
+}
+
+applyStyle();
+if (!SLUG) {
+  showMessage("FALTA EL JUGADOR", "creá tu link en el generador");
+} else {
+  refresh();
+  setInterval(() => { if (Date.now() - last >= EVERY) refresh(); }, 30000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && Date.now() - last >= EVERY) refresh(); });
+}
+</script>

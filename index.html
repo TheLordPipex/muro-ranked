@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muro de Ranked</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ink:#070c11; --surface:#0d1820; --surface-2:#111f29; --line:#1e3040;
+  --fg:#e6f0f4; --muted:#7f9cab; --faint:#4f6d7c; --plat:#7ad6e8; --win:#4fd3b8;
+  --font-display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0; background:radial-gradient(90% 60% at 85% 0%, #12303d 0%, transparent 60%), var(--ink);
+  color:var(--fg); font:400 14px/1.55 var(--font-mono); -webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px; margin:0 auto; padding:40px 16px 80px}
+h1{font:900 clamp(34px,6vw,56px)/.9 var(--font-display); letter-spacing:-.02em; margin:0 0 10px;
+  background:linear-gradient(170deg,#eafaff 10%,var(--plat) 92%); -webkit-background-clip:text; background-clip:text; color:transparent}
+.lead{color:var(--muted); max-width:640px; margin:0 0 36px}
+h2{font:600 12px/1 var(--font-mono); letter-spacing:.22em; text-transform:uppercase; color:var(--plat); margin:0 0 16px;
+  display:flex; align-items:center; gap:10px}
+h2 b{display:inline-grid; place-items:center; width:24px; height:24px; border:1px solid var(--plat); border-radius:50%; font-size:11px; letter-spacing:0}
+section{margin-bottom:44px}
+
+.layout{display:grid; grid-template-columns:minmax(0,340px) minmax(0,1fr); gap:28px; align-items:start}
+@media (max-width:860px){ .layout{grid-template-columns:1fr} }
+
+.controls{display:flex; flex-direction:column; gap:10px}
+details{background:var(--surface); border:1px solid var(--line); border-radius:6px}
+summary{cursor:pointer; padding:12px 14px; font:500 11px/1 var(--font-mono); letter-spacing:.18em; text-transform:uppercase; color:var(--muted); list-style:none; display:flex; justify-content:space-between}
+summary::after{content:"+"; color:var(--faint)}
+details[open] summary::after{content:"–"}
+details[open] summary{border-bottom:1px solid var(--line)}
+.group{padding:12px 14px 14px; display:flex; flex-direction:column; gap:12px}
+label.row{display:grid; grid-template-columns:1fr auto; gap:4px 10px; align-items:center; font-size:12px; color:var(--fg)}
+label.row output{font-size:12px; color:var(--plat); font-variant-numeric:tabular-nums; min-width:44px; text-align:right}
+label.row input[type=range]{grid-column:1 / -1; width:100%; accent-color:var(--plat)}
+label.check{display:flex; gap:10px; align-items:center; font-size:12px; cursor:pointer}
+label.check input{accent-color:var(--plat); width:15px; height:15px}
+label.color{display:flex; justify-content:space-between; align-items:center; font-size:12px}
+input[type=color]{width:44px; height:26px; border:1px solid var(--line); border-radius:4px; background:none; padding:0; cursor:pointer}
+select{width:100%; background:var(--surface-2); color:var(--fg); border:1px solid var(--line); border-radius:4px; padding:10px; font:500 14px var(--font-mono)}
+.seg{display:flex; border:1px solid var(--line); border-radius:4px; overflow:hidden}
+.seg button{flex:1; background:none; border:0; color:var(--muted); padding:8px; font:500 12px var(--font-mono); cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface-2); color:var(--plat)}
+.btn{background:var(--plat); color:#062029; border:0; border-radius:4px; padding:11px 16px; font:600 13px var(--font-mono); cursor:pointer; white-space:nowrap}
+.btn.ghost{background:none; color:var(--muted); border:1px solid var(--line)}
+.btn:focus-visible, select:focus-visible, summary:focus-visible, .seg button:focus-visible{outline:2px solid var(--plat); outline-offset:2px}
+
+.preview{position:sticky; top:16px; display:flex; flex-direction:column; gap:12px}
+.screen{position:relative; width:100%; background:#000; border:1px solid var(--line); border-radius:6px; overflow:hidden}
+.screen iframe{position:absolute; top:0; left:0; border:0; transform-origin:0 0; pointer-events:none}
+.screen .taskbar{position:absolute; left:0; right:0; bottom:0; background:rgba(20,28,36,.92); border-top:1px solid #2a3a48}
+.hint{font-size:11px; color:var(--faint)}
+.link{display:flex; gap:8px}
+.link input{flex:1; min-width:0; background:var(--surface-2); color:var(--fg); border:1px solid var(--line); border-radius:4px; padding:10px; font:400 12px var(--font-mono)}
+
+.apps{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px}
+.app{background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:16px}
+.app h3{margin:0 0 4px; font:800 18px/1.2 var(--font-display)}
+.app .tag{font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--win)}
+.app ol{margin:10px 0 0; padding-left:18px; color:var(--muted); font-size:12px}
+.app li{margin-bottom:4px}
+.app a{color:var(--plat)}
+.app .btn{margin-top:10px; display:inline-block; text-decoration:none}
+footer{color:var(--faint); font-size:11px; border-top:1px solid var(--line); padding-top:16px}
+</style>
+
+<div class="wrap">
+  <h1>Muro de Ranked</h1>
+  <p class="lead">Tu ranked solo/duo como fondo de pantalla. Cada cuadro es una partida: el color dice si la ganaste y la barra que sube por dentro son tus muertes. Se actualiza solo.</p>
+
+  <section>
+    <h2><b>1</b> Elegí tu cuenta</h2>
+    <select id="player" aria-label="Jugador"><option value="">Cargando jugadores…</option></select>
+  </section>
+
+  <section>
+    <h2><b>2</b> Ajustalo a tu pantalla</h2>
+    <div class="layout">
+      <div class="controls" id="controls"></div>
+      <div class="preview">
+        <div class="screen" id="screen"><iframe id="frame" title="Vista previa" tabindex="-1"></iframe><div class="taskbar" id="taskbar"></div></div>
+        <div class="hint" id="screenHint"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><b>3</b> Copiá tu link</h2>
+    <div class="link">
+      <input id="link" readonly aria-label="Tu link">
+      <button class="btn" id="copy">Copiar</button>
+    </div>
+  </section>
+
+  <section>
+    <h2><b>4</b> Ponelo de fondo</h2>
+    <div class="apps">
+      <div class="app">
+        <span class="tag">Windows · gratis · recomendado</span>
+        <h3>Lively Wallpaper</h3>
+        <ol>
+          <li>Instalalo desde la <a href="https://apps.microsoft.com/detail/9ntm2qc6qws7" target="_blank" rel="noopener">Microsoft Store</a> o <a href="https://www.rocksdanister.com/lively/" target="_blank" rel="noopener">su página</a>.</li>
+          <li>Abrilo y tocá el <b>+</b> (Agregar fondo).</li>
+          <li>En "Ingresar URL" pegá tu link y confirmá.</li>
+          <li>Hacé clic en el fondo nuevo para aplicarlo.</li>
+        </ol>
+      </div>
+      <div class="app">
+        <span class="tag">Windows · si ya lo tenés</span>
+        <h3>Wallpaper Engine</h3>
+        <ol>
+          <li>Descargá tu archivo con el botón de abajo.</li>
+          <li>En Wallpaper Engine: <b>Abrir fondo → Abrir desde archivo</b> y elegí ese archivo.</li>
+        </ol>
+        <a class="btn ghost" id="weDownload" href="#" download="muro-ranked.html">Descargar archivo</a>
+      </div>
+      <div class="app">
+        <span class="tag">Mac · gratis</span>
+        <h3>Plash</h3>
+        <ol>
+          <li>Instalalo desde la <a href="https://apps.apple.com/app/plash/id1494023538" target="_blank" rel="noopener">Mac App Store</a>.</li>
+          <li>En el ícono de la barra de menú: <b>Add Website</b> y pegá tu link.</li>
+        </ol>
+      </div>
+      <div class="app">
+        <span class="tag">Cualquier lado</span>
+        <h3>Navegador o celular</h3>
+        <ol>
+          <li>Abrí tu link en cualquier navegador.</li>
+          <li>En el celular podés agregarlo a la pantalla de inicio.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <footer>Datos de la API de Riot Games, actualizados cada 15 minutos aprox. Solo partidas de ranked solo/duo de la temporada actual que la API todavía tiene. Muro de Ranked no está respaldado por Riot Games.</footer>
+</div>
+
+<script>
+/* Cada control tiene: clave del link, valor por defecto y tipo. Solo se agregan al link
+   los que difieren del valor por defecto, así el link queda corto. */
+const GROUPS = [
+  ["Posición y tamaño", [
+    { k: "mi", label: "Altura (margen inferior)", type: "range", min: 0, max: 600, step: 5, def: 60, unit: "px" },
+    { k: "ml", label: "Margen lateral", type: "range", min: 0, max: 600, step: 5, def: 55, unit: "px" },
+    { k: "al", label: "Posición", type: "seg", def: "r", options: [["l", "Izquierda"], ["c", "Centro"], ["r", "Derecha"]] },
+    { k: "es", label: "Tamaño", type: "range", min: 50, max: 160, step: 5, def: 100, unit: "%" },
+    { k: "an", label: "Ancho del panel", type: "range", min: 360, max: 1600, step: 10, def: 760, unit: "px" },
+    { k: "op", label: "Opacidad", type: "range", min: 20, max: 100, step: 5, def: 100, unit: "%" },
+  ], true],
+  ["El muro", [
+    { k: "p", label: "Partidas en el muro", type: "range", min: 8, max: 400, step: 4, def: 24 },
+    { k: "col", label: "Columnas", type: "range", min: 4, max: 40, step: 1, def: 12 },
+    { k: "tm", label: "Muertes que llenan el cuadro", type: "range", min: 4, max: 25, step: 1, def: 12 },
+    { k: "sep", label: "Separación entre cuadros", type: "range", min: 0, max: 16, step: 1, def: 5, unit: "px" },
+    { k: "red", label: "Redondeo de cuadros", type: "range", min: 0, max: 16, step: 1, def: 2, unit: "px" },
+    { k: "anim", label: "Animar las barras", type: "check", def: true },
+    { k: "ra", label: "Resaltar racha de 3 o más", type: "check", def: true },
+  ]],
+  ["Splash del último campeón", [
+    { k: "sp", label: "Mostrar splash art", type: "check", def: true },
+    { k: "spo", label: "Opacidad del splash", type: "range", min: 0, max: 60, step: 1, def: 14, unit: "%" },
+    { k: "spb", label: "Desenfoque", type: "range", min: 0, max: 20, step: 1, def: 0, unit: "px" },
+    { k: "spc", label: "Color (0 = blanco y negro)", type: "range", min: 0, max: 150, step: 5, def: 85, unit: "%" },
+  ]],
+  ["Colores", [
+    { k: "ac", label: "Acento", type: "color", def: "7ad6e8" },
+    { k: "vi", label: "Victoria", type: "color", def: "4fd3b8" },
+    { k: "de", label: "Derrota", type: "color", def: "cf6b80" },
+    { k: "fo", label: "Fondo", type: "color", def: "070c11" },
+    { k: "br", label: "Brillo de fondo (degradado)", type: "check", def: true },
+  ]],
+  ["Mostrar", [
+    { k: "who", label: "Nombre de invocador", type: "show" },
+    { k: "rank", label: "Rango y LP", type: "show" },
+    { k: "lpBar", label: "Barra de LP", type: "show" },
+    { k: "stats", label: "Fila de estadísticas", type: "show" },
+    { k: "season", label: "· Temporada", type: "show" },
+    { k: "recent", label: "· Últimas 20", type: "show" },
+    { k: "streak", label: "· Racha", type: "show" },
+    { k: "deaths", label: "· Muertes por partida", type: "show" },
+    { k: "wallHead", label: "Título del muro", type: "show" },
+    { k: "legend", label: "Leyenda", type: "show" },
+    { k: "foot", label: "Pie (última actualización)", type: "show" },
+  ]],
+];
+const FIELDS = GROUPS.flatMap(g => g[1]);
+const $ = id => document.getElementById(id);
+
+// Estado: valores por defecto, pisados por lo que el visitante dejó la última vez.
+const state = { j: "" };
+for (const f of FIELDS) state[f.k] = f.type === "show" ? true : f.def;
+try { Object.assign(state, JSON.parse(localStorage.getItem("muroGenerador") || "{}")); } catch (e) {}
+const save = () => { try { localStorage.setItem("muroGenerador", JSON.stringify(state)); } catch (e) {} };
+
+// Controles
+const controls = $("controls");
+for (const [title, fields, open] of GROUPS) {
+  const d = document.createElement("details");
+  if (open) d.open = true;
+  d.innerHTML = `<summary>${title}</summary><div class="group"></div>`;
+  const g = d.querySelector(".group");
+  for (const f of fields) g.appendChild(control(f));
+  controls.appendChild(d);
+}
+const reset = document.createElement("button");
+reset.className = "btn ghost";
+reset.textContent = "Volver a los valores por defecto";
+reset.onclick = () => {
+  for (const f of FIELDS) state[f.k] = f.type === "show" ? true : f.def;
+  save();
+  location.reload();
+};
+controls.appendChild(reset);
+
+function control(f) {
+  const el = document.createElement("label");
+  if (f.type === "range") {
+    el.className = "row";
+    el.innerHTML = `<span>${f.label}</span><output></output><input type="range" min="${f.min}" max="${f.max}" step="${f.step}">`;
+    const input = el.querySelector("input"), out = el.querySelector("output");
+    input.value = state[f.k];
+    const show = () => out.textContent = input.value + (f.unit || "");
+    show();
+    input.oninput = () => { state[f.k] = +input.value; show(); update(); };
+  } else if (f.type === "check" || f.type === "show") {
+    el.className = "check";
+    el.innerHTML = `<input type="checkbox"> <span>${f.label}</span>`;
+    const input = el.querySelector("input");
+    input.checked = !!state[f.k];
+    input.onchange = () => { state[f.k] = input.checked; update(); };
+  } else if (f.type === "color") {
+    el.className = "color";
+    el.innerHTML = `<span>${f.label}</span><input type="color">`;
+    const input = el.querySelector("input");
+    input.value = "#" + state[f.k];
+    input.oninput = () => { state[f.k] = input.value.slice(1); update(); };
+  } else if (f.type === "seg") {
+    const wrap = document.createElement("div");
+    wrap.className = "row";
+    wrap.innerHTML = `<span>${f.label}</span><span></span><div class="seg" role="group" style="grid-column:1/-1"></div>`;
+    const seg = wrap.querySelector(".seg");
+    for (const [v, text] of f.options) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = text;
+      b.setAttribute("aria-pressed", state[f.k] === v);
+      b.onclick = () => {
+        state[f.k] = v;
+        seg.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+        update();
+      };
+      seg.appendChild(b);
+    }
+    return wrap;
+  }
+  return el;
+}
+
+// Link
+const base = new URL("muro.html", location.href).href;
+function buildLink() {
+  const p = new URLSearchParams();
+  p.set("j", state.j);
+  const hidden = [];
+  for (const f of FIELDS) {
+    if (f.type === "show") { if (!state[f.k]) hidden.push(f.k); continue; }
+    if (state[f.k] === f.def) continue;
+    p.set(f.k, f.type === "check" ? (state[f.k] ? "1" : "0") : state[f.k]);
+  }
+  if (hidden.length) p.set("oc", hidden.join(","));
+  return `${base}?${p.toString().replace(/%2C/g, ",")}`;
+}
+
+let timer;
+function update() {
+  save();
+  const link = state.j ? buildLink() : "";
+  $("link").value = link || "Primero elegí tu cuenta";
+  $("copy").disabled = !link;
+  clearTimeout(timer);
+  timer = setTimeout(() => { $("frame").src = link || "about:blank"; }, 250);
+  const launcher = `<!doctype html><meta charset="utf-8"><title>Muro de Ranked</title><style>html,body{margin:0;height:100%;background:#070c11}iframe{border:0;width:100%;height:100%;display:block}</style><iframe src="${link}"></iframe>`;
+  $("weDownload").href = "data:text/html;charset=utf-8," + encodeURIComponent(launcher);
+}
+
+$("copy").onclick = async () => {
+  try { await navigator.clipboard.writeText($("link").value); }
+  catch (e) { $("link").select(); document.execCommand("copy"); }
+  $("copy").textContent = "¡Copiado!";
+  setTimeout(() => $("copy").textContent = "Copiar", 1600);
+};
+
+// Vista previa del tamaño de tu pantalla, escalada a la caja
+const W = screen.width || 1920, H = screen.height || 1080, TASKBAR = 40;
+$("frame").style.width = W + "px";
+$("frame").style.height = H + "px";
+$("screenHint").textContent = `Vista previa de tu pantalla (${W}×${H}). La franja de abajo simula la barra de tareas: subí "Altura" hasta que el muro quede por encima.`;
+function fit() {
+  const box = $("screen"), s = box.clientWidth / W;
+  box.style.height = H * s + "px";
+  $("frame").style.transform = `scale(${s})`;
+  $("taskbar").style.height = TASKBAR * s + "px";
+}
+addEventListener("resize", fit);
+fit();
+
+// Jugadores
+fetch("data/jugadores.json", { cache: "no-store" }).then(r => r.json()).then(list => {
+  const sel = $("player");
+  sel.innerHTML = `<option value="">— Elegí tu cuenta —</option>` +
+    list.map(p => `<option value="${p.slug}">${p.riotId}  ·  ${[p.tier, p.division].filter(Boolean).join(" ")}</option>`).join("");
+  const fromLink = new URLSearchParams(location.search).get("j");
+  if (fromLink) state.j = fromLink;
+  if (list.some(p => p.slug === state.j)) sel.value = state.j; else state.j = "";
+  sel.onchange = () => { state.j = sel.value; update(); };
+  update();
+}).catch(() => { $("player").innerHTML = `<option value="">No se pudo cargar la lista</option>`; update(); });
+</script>
