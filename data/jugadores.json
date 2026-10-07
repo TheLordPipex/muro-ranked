@@ -1,0 +1,51 @@
+[
+  {
+    "riotId": "ONU ElSeñorPipex#TLP",
+    "slug": "onu-elsenorpipex-tlp",
+    "tier": "PLATINO",
+    "division": "IV",
+    "lp": 5
+  },
+  {
+    "riotId": "ONU Rick 君#RCK",
+    "slug": "onu-rick-rck",
+    "tier": "PLATA",
+    "division": "II",
+    "lp": 35
+  },
+  {
+    "riotId": "ONU yamizang#1312",
+    "slug": "onu-yamizang-1312",
+    "tier": "ORO",
+    "division": "IV",
+    "lp": 10
+  },
+  {
+    "riotId": "jandru21#212",
+    "slug": "jandru21-212",
+    "tier": "PLATA",
+    "division": "IV",
+    "lp": 77
+  },
+  {
+    "riotId": "PIGLINpotencia#PIG",
+    "slug": "piglinpotencia-pig",
+    "tier": "ORO",
+    "division": "II",
+    "lp": 11
+  },
+  {
+    "riotId": "Peter93#Peter",
+    "slug": "peter93-peter",
+    "tier": "SIN RANGO",
+    "division": "",
+    "lp": 0
+  },
+  {
+    "riotId": "IQS Waipoldo#CDT",
+    "slug": "iqs-waipoldo-cdt",
+    "tier": "BRONCE",
+    "division": "II",
+    "lp": 60
+  }
+]

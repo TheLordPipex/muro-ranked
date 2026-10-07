@@ -39,4 +39,5 @@ jobs:
           git config user.name "muro-bot"
           git config user.email "muro-bot@users.noreply.github.com"
           git commit -m "Datos $(date -u +'%Y-%m-%d %H:%M')"
+          git pull --rebase
           git push

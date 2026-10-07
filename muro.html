@@ -201,6 +201,8 @@ const bool = k => q.has(k) ? q.get(k) !== "0" : undefined;
 const hex = k => q.has(k) && /^[0-9a-f]{6}$/i.test(q.get(k)) ? "#" + q.get(k) : undefined;
 const set = (k, v) => { if (v !== undefined) cfg[k] = v; };
 const SLUG = (q.get("j") || "").toLowerCase().replace(/[^a-z0-9-]/g, "");
+const MODE = ["solo", "flex", "normal"].includes(q.get("m")) ? q.get("m") : "solo";
+const FILE = MODE === "solo" ? SLUG : `${SLUG}.${MODE}`;
 set("tiles", num("p", 8, 400));
 set("cols", num("col", 4, 40));
 set("deathCap", num("tm", 4, 25));
@@ -287,6 +289,11 @@ function render() {
   setSplash(cfg.splash && D.splash ? `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${D.splash}_0.jpg` : null);
 
   $("riotId").textContent = D.riotId || "—";
+  $("queue").textContent = D.queueLabel || "CLASIFICATORIA SOLO/DUO";
+  const ranked = D.lp !== null && D.lp !== undefined;
+  document.querySelector(".lp").hidden = !ranked;
+  $("secLpBar").hidden = !ranked || !cfg.show.lpBar;
+  $("statSeason").querySelector("em").textContent = ranked ? "Temporada" : "Total";
   $("tier").textContent = [D.tier, D.division].filter(Boolean).join(" ") || "—";
   $("lp").textContent = n(D.lp);
   $("lpBar").style.width = clamp(n(D.lp), 0, 100) + "%";
@@ -323,7 +330,7 @@ function render() {
 
   $("wallRange").textContent = games.length
     ? `${games.length} partidas · más antigua a la izquierda`
-    : "sin partidas de ranked solo/duo esta temporada";
+    : (ranked ? "sin partidas esta temporada" : "sin partidas normales");
 
   grid.textContent = "";
   const frag = document.createDocumentFragment();
@@ -373,7 +380,7 @@ async function refresh() {
   loading = true;
   last = Date.now();
   try {
-    const res = await fetch(`data/${SLUG}.json?t=${last}`, { cache: "no-store" });
+    const res = await fetch(`data/${FILE}.json?t=${last}`, { cache: "no-store" });
     if (res.status === 404) { if (!D) showMessage("JUGADOR NO ENCONTRADO", "revisá el link en el generador"); return; }
     if (!res.ok) throw new Error(res.status);
     const fresh = await res.json();

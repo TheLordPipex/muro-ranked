@@ -1,0 +1,79 @@
+name: Agregar cuenta
+
+# Se dispara con el formulario "Agregar cuenta".
+# - Si lo abre el dueño del repositorio, se procesa al instante.
+# - Si lo abre otra persona, espera a que el dueño le ponga la etiqueta "aprobado".
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: actualizar
+  cancel-in-progress: false
+
+jobs:
+  agregar:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'agregar-cuenta') && (
+        (github.event.action == 'opened' && github.event.issue.author_association == 'OWNER') ||
+        (github.event.action == 'labeled' && github.event.label.name == 'aprobado')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Leer el Riot ID del formulario
+        id: form
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          id=$(printf '%s\n' "$BODY" | awk '/^### Riot ID/{f=1;next} f&&NF{print;exit}' | tr -d '\r')
+          echo "riot_id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Comprobar y agregar a la lista
+        id: add
+        run: node scripts/agregar.mjs
+        env:
+          RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
+          RIOT_ID: ${{ steps.form.outputs.riot_id }}
+
+      - name: Bajar sus partidas
+        run: node scripts/actualizar.mjs
+        env:
+          RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
+          SOLO: ${{ steps.add.outputs.slug }}
+
+      - name: Publicar
+        run: |
+          git add jugadores.json data
+          git diff --cached --quiet && exit 0
+          git config user.name "muro-bot"
+          git config user.email "muro-bot@users.noreply.github.com"
+          git commit -m "Agregar ${{ steps.add.outputs.riot_id }}"
+          git pull --rebase
+          git push
+
+      - name: Responder y cerrar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          link="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/?j=${{ steps.add.outputs.slug }}"
+          gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "Listo: **${{ steps.add.outputs.riot_id }}** ya está en el muro. En 1 o 2 minutos aparece en la lista. Armá tu link acá: $link"
+          gh issue close ${{ github.event.issue.number }} --repo ${{ github.repository }}
+
+      - name: Avisar si falló
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ERROR: ${{ steps.add.outputs.error }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "No pude agregar la cuenta. ${ERROR:-Algo falló al bajar los datos; revisá la pestaña Actions.} Revisá el Riot ID y abrí un pedido nuevo."

@@ -76,6 +76,9 @@ footer{color:var(--faint); font-size:11px; border-top:1px solid var(--line); pad
   <section>
     <h2><b>1</b> Elegí tu cuenta</h2>
     <select id="player" aria-label="Jugador"><option value="">Cargando jugadores…</option></select>
+    <p class="hint" style="margin:10px 0 0">¿No está tu cuenta o querés usar un smurf?
+      <a href="https://github.com/TheLordPipex/muro-ranked/issues/new?template=agregar-cuenta.yml" target="_blank" rel="noopener" style="color:var(--plat)">Agregá una cuenta</a>
+      (necesitás una cuenta de GitHub; en unos minutos aparece en esta lista).</p>
   </section>
 
   <section>
@@ -138,13 +141,16 @@ footer{color:var(--faint); font-size:11px; border-top:1px solid var(--line); pad
     </div>
   </section>
 
-  <footer>Datos de la API de Riot Games, actualizados cada 15 minutos aprox. Solo partidas de ranked solo/duo de la temporada actual que la API todavía tiene. Muro de Ranked no está respaldado por Riot Games.</footer>
+  <footer>Datos de la API de Riot Games, actualizados cada 15 minutos aprox. Ranked: partidas de la temporada actual. Normales: draft, blind, Swiftplay y Quickplay (sin ARAM). Solo lo que la API todavía tiene guardado. Muro de Ranked no está respaldado por Riot Games.</footer>
 </div>
 
 <script>
 /* Cada control tiene: clave del link, valor por defecto y tipo. Solo se agregan al link
    los que difieren del valor por defecto, así el link queda corto. */
 const GROUPS = [
+  ["Modo de juego", [
+    { k: "m", label: "Qué partidas mostrar", type: "seg", def: "solo", options: [["solo", "Solo/Duo"], ["flex", "Flex"], ["normal", "Normales"]] },
+  ], true],
   ["Posición y tamaño", [
     { k: "mi", label: "Altura (margen inferior)", type: "range", min: 0, max: 600, step: 5, def: 60, unit: "px" },
     { k: "ml", label: "Margen lateral", type: "range", min: 0, max: 600, step: 5, def: 55, unit: "px" },

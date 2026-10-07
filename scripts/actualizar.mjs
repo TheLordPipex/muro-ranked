@@ -3,16 +3,15 @@
 // Uso: RIOT_API_KEY=... node scripts/actualizar.mjs
 // (en local: node --env-file=.env scripts/actualizar.mjs)
 //
-// Por jugador escribe data/<slug>.json con su rango y sus partidas de ranked solo/duo de la temporada,
-// y data/jugadores.json con la lista para el generador de links.
-// Es incremental: solo pide las partidas que todavía no están en data/<slug>.json.
+// Por jugador escribe un archivo por modo (ver MODES) y data/jugadores.json con la lista para el generador.
+// Es incremental: solo pide las partidas que todavía no están guardadas.
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { slugOf } from "./slug.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const DATA = join(ROOT, "data");
-const QUEUE = 420;
 const REGIONAL = "americas";
 const PLATFORM = "la1"; // LAN
 const DELAY_MS = 1250; // 100 requests cada 2 minutos
@@ -36,7 +35,13 @@ async function riot(host, path) {
   for (let attempt = 1; attempt <= 6; attempt++) {
     await sleep(DELAY_MS);
     requests++;
-    const res = await fetch(`https://${host}.api.riotgames.com${path}`, { headers: { "X-Riot-Token": API_KEY } });
+    let res;
+    try {
+      res = await fetch(`https://${host}.api.riotgames.com${path}`, { headers: { "X-Riot-Token": API_KEY } });
+    } catch {
+      await sleep(10_000); // corte de red: esperar y reintentar
+      continue;
+    }
     if (res.ok) return res.json();
     if (res.status === 404) return null;
     if (res.status === 429 || res.status >= 500) {
@@ -49,83 +54,109 @@ async function riot(host, path) {
   throw new Error(`Demasiados reintentos en ${path}`);
 }
 
-export const slugOf = (riotId) =>
-  riotId.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
 const readJson = (file, fallback) => (existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : fallback);
 const content = (d) => JSON.stringify({ ...d, updated: undefined });
 
-async function updatePlayer({ gameName, tagLine }) {
-  const riotId = `${gameName}#${tagLine}`;
-  const slug = slugOf(riotId);
-  const file = join(DATA, `${slug}.json`);
+// Modos del muro. Cada uno se guarda en su propio archivo.
+//   solo   -> data/<slug>.json         ranked solo/duo, partidas de la temporada (victorias + derrotas del rango)
+//   flex   -> data/<slug>.flex.json    ranked flex, ídem
+//   normal -> data/<slug>.normal.json  draft, blind, Swiftplay y Quickplay; sin ARAM ni modos especiales
+const MODES = {
+  solo: { file: "", queues: [420], league: "RANKED_SOLO_5x5", label: "CLASIFICATORIA SOLO/DUO" },
+  flex: { file: ".flex", queues: [440], league: "RANKED_FLEX_SR", label: "CLASIFICATORIA FLEXIBLE" },
+  normal: { file: ".normal", queues: [400, 430, 480, 490], league: null, label: "PARTIDAS NORMALES", cap: 500 },
+};
+const matchNumber = (id) => Number(id.split("_")[1]);
+
+async function updateMode(mode, { riotId, slug, puuid, entries }) {
+  const M = MODES[mode];
+  const file = join(DATA, `${slug}${M.file}.json`);
   const prev = readJson(file, null);
+  const league = M.league ? entries?.find((e) => e.queueType === M.league) : null;
 
-  const account = await riot(REGIONAL, `/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`);
-  if (!account) throw new Error(`no existe la cuenta ${riotId}`);
-  const puuid = account.puuid;
-  const solo = (await riot(PLATFORM, `/lol/league/v4/entries/by-puuid/${puuid}`))?.find((e) => e.queueType === "RANKED_SOLO_5x5");
-
-  // Partidas nuevas: la API da la más reciente primero; se corta al llegar a una ya conocida.
+  // Partidas nuevas: la API da la más reciente primero; en cada cola se corta al llegar a una ya conocida.
   const known = new Set([...(prev?.games ?? []).map((g) => g.id), ...(prev?.remakes ?? [])]);
   const fresh = [];
   const remakes = [...(prev?.remakes ?? [])];
-  let done = false;
-  for (let start = 0; !done; start += 100) {
-    const page = await riot(REGIONAL, `/lol/match/v5/matches/by-puuid/${puuid}/ids?queue=${QUEUE}&start=${start}&count=100`);
-    for (const id of page) {
-      if (known.has(id)) { done = true; break; }
-      const m = await riot(REGIONAL, `/lol/match/v5/matches/${id}`);
-      if (!m) continue;
-      const me = m.info.participants.find((p) => p.puuid === puuid);
-      if (!me || m.info.gameDuration < MIN_DURATION_S || me.gameEndedInEarlySurrender) { remakes.push(id); continue; }
-      fresh.push({ id, w: me.win ? 1 : 0, c: me.championName, d: me.deaths });
+  for (const queue of M.queues) {
+    let found = 0;
+    let done = false;
+    for (let start = 0; !done; start += 100) {
+      const page = await riot(REGIONAL, `/lol/match/v5/matches/by-puuid/${puuid}/ids?queue=${queue}&start=${start}&count=100`);
+      for (const id of page) {
+        if (known.has(id) || (M.cap && found >= M.cap)) { done = true; break; }
+        found++;
+        const m = await riot(REGIONAL, `/lol/match/v5/matches/${id}`);
+        if (!m) continue;
+        const me = m.info.participants.find((p) => p.puuid === puuid);
+        if (!me || m.info.gameDuration < MIN_DURATION_S || me.gameEndedInEarlySurrender) { remakes.push(id); continue; }
+        fresh.push({ id, w: me.win ? 1 : 0, c: me.championName, d: me.deaths });
+      }
+      if (page.length < 100) done = true;
     }
-    if (page.length < 100) done = true;
-    if (fresh.length && fresh.length % 100 === 0) console.log(`  ${riotId}: ${fresh.length} partidas nuevas...`);
   }
 
-  // Solo la temporada actual: tantas partidas como victorias + derrotas del rango.
-  const season = (solo?.wins ?? 0) + (solo?.losses ?? 0);
-  const all = [...(prev?.games ?? []), ...fresh.reverse()]; // de la más vieja a la más nueva
-  const games = season ? all.slice(-season) : [];
+  // De la más vieja a la más nueva. En ranked, solo la temporada actual (victorias + derrotas del rango).
+  const all = [...(prev?.games ?? []), ...fresh].sort((a, b) => matchNumber(a.id) - matchNumber(b.id));
+  const season = (league?.wins ?? 0) + (league?.losses ?? 0);
+  const games = M.league ? (season ? all.slice(-season) : []) : all.slice(-M.cap);
   const last = games.at(-1)?.c;
+  const won = games.filter((g) => g.w).length;
 
   const data = {
     riotId,
     slug,
-    tier: solo ? TIERS[solo.tier] ?? solo.tier : "SIN RANGO",
-    division: solo && !["MASTER", "GRANDMASTER", "CHALLENGER"].includes(solo.tier) ? solo.rank : "",
-    lp: solo?.leaguePoints ?? 0,
-    wins: solo?.wins ?? 0,
-    losses: solo?.losses ?? 0,
+    mode,
+    queueLabel: M.label,
+    tier: M.league ? (league ? TIERS[league.tier] ?? league.tier : "SIN RANGO") : "NORMALES",
+    division: league && !["MASTER", "GRANDMASTER", "CHALLENGER"].includes(league.tier) ? league.rank : "",
+    lp: M.league ? league?.leaguePoints ?? 0 : null,
+    wins: M.league ? league?.wins ?? 0 : won,
+    losses: M.league ? league?.losses ?? 0 : games.length - won,
     updated: new Date().toISOString(),
     splash: last ? DDRAGON_IDS[last] ?? last : null,
-    remakes: remakes.slice(-200),
+    remakes: remakes.slice(-300),
     games,
   };
   if (!prev || content(prev) !== content(data)) {
     writeFileSync(file, JSON.stringify(data));
-    console.log(`${riotId}: ${data.tier} ${data.division} ${data.lp} LP, ${games.length} partidas (+${fresh.length})`);
+    console.log(`${riotId} [${mode}]: ${data.tier} ${data.division} ${data.lp ?? ""}, ${games.length} partidas (+${fresh.length})`);
   } else {
-    console.log(`${riotId}: sin cambios`);
+    console.log(`${riotId} [${mode}]: sin cambios`);
   }
-  return { riotId, slug, tier: data.tier, division: data.division, lp: data.lp };
+  return data;
+}
+
+async function updatePlayer({ gameName, tagLine }) {
+  const riotId = `${gameName}#${tagLine}`;
+  const slug = slugOf(riotId);
+  const account = await riot(REGIONAL, `/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`);
+  if (!account) throw new Error(`no existe la cuenta ${riotId}`);
+  const ctx = { riotId, slug, puuid: account.puuid, entries: await riot(PLATFORM, `/lol/league/v4/entries/by-puuid/${account.puuid}`) };
+  const solo = await updateMode("solo", ctx);
+  for (const mode of ["flex", "normal"]) await updateMode(mode, ctx);
+  return { riotId, slug, tier: solo.tier, division: solo.division, lp: solo.lp };
 }
 
 mkdirSync(DATA, { recursive: true });
 const players = readJson(join(ROOT, "jugadores.json"), []);
 const index = [];
 let failed = 0;
+// SOLO=<slug> actualiza solo esa cuenta (al agregar una nueva); las demás se toman como están.
+const ONLY = process.env.SOLO;
 for (const p of players) {
+  const saved = readJson(join(DATA, `${slugOf(`${p.gameName}#${p.tagLine}`)}.json`), null);
+  if (ONLY && slugOf(`${p.gameName}#${p.tagLine}`) !== ONLY) {
+    if (saved) index.push({ riotId: saved.riotId, slug: saved.slug, tier: saved.tier, division: saved.division, lp: saved.lp });
+    continue;
+  }
   try {
     index.push(await updatePlayer(p));
   } catch (err) {
     failed++;
     console.error(`${p.gameName}#${p.tagLine}: ${err.message}`);
     if (err.fatal) process.exit(1);
-    const prev = readJson(join(DATA, `${slugOf(`${p.gameName}#${p.tagLine}`)}.json`), null);
-    if (prev) index.push({ riotId: prev.riotId, slug: prev.slug, tier: prev.tier, division: prev.division, lp: prev.lp });
+    if (saved) index.push({ riotId: saved.riotId, slug: saved.slug, tier: saved.tier, division: saved.division, lp: saved.lp });
   }
 }
 
