@@ -8,6 +8,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { execSync } from "node:child_process";
 import { slugOf } from "./slug.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -138,6 +139,19 @@ async function updatePlayer({ gameName, tagLine }) {
   return { riotId, slug, tier: solo.tier, division: solo.division, lp: solo.lp };
 }
 
+// Con PUBLICAR=1 (en GitHub Actions) sube los datos después de cada jugador, para que se vean
+// sin esperar al resto y para no perder lo hecho si la corrida se corta.
+function publish(message) {
+  if (!process.env.PUBLICAR) return;
+  execSync(`git add data && (git diff --cached --quiet || (git commit -q -m "${message.replace(/"/g, "")}" && git pull -q --rebase --autostash && git push -q))`, { cwd: ROOT, stdio: "inherit" });
+}
+
+function writeIndex() {
+  const indexFile = join(DATA, "jugadores.json");
+  const indexJson = JSON.stringify(index, null, 2);
+  if (!existsSync(indexFile) || readFileSync(indexFile, "utf8") !== indexJson) writeFileSync(indexFile, indexJson);
+}
+
 mkdirSync(DATA, { recursive: true });
 const players = readJson(join(ROOT, "jugadores.json"), []);
 const index = [];
@@ -152,6 +166,7 @@ for (const p of players) {
   }
   try {
     index.push(await updatePlayer(p));
+    publish(`Datos: ${p.gameName}#${p.tagLine}`);
   } catch (err) {
     failed++;
     console.error(`${p.gameName}#${p.tagLine}: ${err.message}`);
@@ -160,7 +175,6 @@ for (const p of players) {
   }
 }
 
-const indexFile = join(DATA, "jugadores.json");
-const indexJson = JSON.stringify(index, null, 2);
-if (!existsSync(indexFile) || readFileSync(indexFile, "utf8") !== indexJson) writeFileSync(indexFile, indexJson);
+writeIndex();
+publish("Datos: lista de jugadores");
 console.log(`${requests} requests${failed ? `, ${failed} jugador(es) con error` : ""}`);

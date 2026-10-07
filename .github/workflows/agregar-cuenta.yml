@@ -31,6 +31,11 @@ jobs:
         with:
           node-version: 22
 
+      - name: Identidad para publicar
+        run: |
+          git config user.name "muro-bot"
+          git config user.email "muro-bot@users.noreply.github.com"
+
       - name: Leer el Riot ID del formulario
         id: form
         env:
@@ -51,15 +56,14 @@ jobs:
         env:
           RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
           SOLO: ${{ steps.add.outputs.slug }}
+          PUBLICAR: "1"
 
       - name: Publicar
         run: |
           git add jugadores.json data
           git diff --cached --quiet && exit 0
-          git config user.name "muro-bot"
-          git config user.email "muro-bot@users.noreply.github.com"
           git commit -m "Agregar ${{ steps.add.outputs.riot_id }}"
-          git pull --rebase
+          git pull --rebase --autostash
           git push
 
       - name: Responder y cerrar
