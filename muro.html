@@ -75,7 +75,7 @@ body[data-glow="0"]{background:var(--ink)}
   font-family:var(--font-display); font-weight:900;
   font-size:clamp(38px,6.4vw,72px); line-height:.86;
   letter-spacing:-.025em; margin:0;
-  background:linear-gradient(170deg,#eafaff 10%,var(--plat) 92%);
+  background:linear-gradient(170deg,color-mix(in srgb, var(--tier,var(--plat)) 22%, #fff) 10%,var(--tier,var(--plat)) 92%);
   -webkit-background-clip:text; background-clip:text; color:transparent;
 }
 .lp{display:flex; align-items:baseline; gap:6px; padding-bottom:5px}
@@ -83,7 +83,7 @@ body[data-glow="0"]{background:var(--ink)}
 .lp i{font:500 11px/1 var(--font-mono); font-style:normal; letter-spacing:.2em; color:var(--muted)}
 
 .bar{height:3px; background:var(--line); border-radius:2px; overflow:hidden}
-.bar>i{display:block; height:100%; background:linear-gradient(90deg,#3f93a8,var(--plat)); border-radius:2px}
+.bar>i{display:block; height:100%; background:linear-gradient(90deg,color-mix(in srgb, var(--tier,var(--plat)) 55%, #000),var(--tier,var(--plat))); border-radius:2px}
 
 /* ── stat row ───────────────────────────────────────── */
 .stats{display:flex; gap:clamp(18px,3.4vw,42px); flex-wrap:wrap}
@@ -189,7 +189,7 @@ const cfg = {
   tiles: 24, cols: 12, deathCap: 12, align: "right", scale: 1,
   padBottom: 60, padSide: 55, panelWidth: 760, opacity: 1, gap: 5, radius: 2,
   accent: "#7ad6e8", win: "#4fd3b8", loss: "#cf6b80", bg: "#070c11", glow: true,
-  animate: true, streakGlow: true,
+  animate: true, streakGlow: true, tierColor: true,
   splash: true, splashOpacity: 0.14, splashBlur: 0, splashSat: 0.85,
   show: { who: true, rank: true, lpBar: true, stats: true, season: true, recent: true, streak: true, deaths: true, wallHead: true, legend: true, foot: true },
 };
@@ -225,6 +225,7 @@ set("splashBlur", num("spb", 0, 20));
 set("splashSat", num("spc", 0, 150, x => x / 100));
 set("animate", bool("anim"));
 set("streakGlow", bool("ra"));
+set("tierColor", bool("rc"));
 for (const k of (q.get("oc") || "").split(",")) if (k in cfg.show) cfg.show[k] = false;
 
 const stage = document.querySelector(".stage");
@@ -281,6 +282,12 @@ function showMessage(tier, note) {
   $("note").textContent = note;
 }
 
+// Color de cada rango, para el nombre del rango y la barra de LP.
+const TIER_COLORS = {
+  "HIERRO": "#a1918a", "BRONCE": "#c98a5e", "PLATA": "#b4c3d0", "ORO": "#e8bb57", "PLATINO": "#7ad6e8",
+  "ESMERALDA": "#43d18a", "DIAMANTE": "#8f9cff", "MAESTRO": "#c77dff", "GRAN MAESTRO": "#ff5d6a", "RETADOR": "#9fdcff",
+};
+
 function render() {
   const all = Array.isArray(D.games) ? D.games : [];
   const games = all.slice(-cfg.tiles);
@@ -295,6 +302,9 @@ function render() {
   $("secLpBar").hidden = !ranked || !cfg.show.lpBar;
   $("statSeason").querySelector("em").textContent = ranked ? "Temporada" : "Total";
   $("tier").textContent = [D.tier, D.division].filter(Boolean).join(" ") || "—";
+  const tierColor = cfg.tierColor ? TIER_COLORS[D.tier] : null;
+  if (tierColor) document.documentElement.style.setProperty("--tier", tierColor);
+  else document.documentElement.style.removeProperty("--tier");
   $("lp").textContent = n(D.lp);
   $("lpBar").style.width = clamp(n(D.lp), 0, 100) + "%";
 
