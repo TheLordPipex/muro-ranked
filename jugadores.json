@@ -1,9 +1,34 @@
 [
-  { "gameName": "ONU ElSeñorPipex", "tagLine": "TLP" },
-  { "gameName": "ONU Rick 君", "tagLine": "RCK" },
-  { "gameName": "ONU yamizang", "tagLine": "1312" },
-  { "gameName": "jandru21", "tagLine": "212" },
-  { "gameName": "PIGLINpotencia", "tagLine": "PIG" },
-  { "gameName": "Peter93", "tagLine": "Peter" },
-  { "gameName": "IQS Waipoldo", "tagLine": "CDT" }
+  {
+    "gameName": "ONU ElSeñorPipex",
+    "tagLine": "TLP"
+  },
+  {
+    "gameName": "ONU Rick 君",
+    "tagLine": "RCK"
+  },
+  {
+    "gameName": "ONU yamizang",
+    "tagLine": "1312"
+  },
+  {
+    "gameName": "jandru21",
+    "tagLine": "212"
+  },
+  {
+    "gameName": "PIGLINpotencia",
+    "tagLine": "PIG"
+  },
+  {
+    "gameName": "Peter93",
+    "tagLine": "Peter"
+  },
+  {
+    "gameName": "IQS Waipoldo",
+    "tagLine": "CDT"
+  },
+  {
+    "gameName": "Pride of Pig",
+    "tagLine": "LAN"
+  }
 ]
